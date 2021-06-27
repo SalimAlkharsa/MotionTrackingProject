@@ -1,125 +1,112 @@
+#Here we want to format our data frame nicely to something that graphs
 import pandas as pd
-import plotly.graph_objects as go
+import numpy as np
 import plotly.express as px
 from plotly.offline import plot
 import matplotlib.pyplot as plt
 
-#Reading the File
-df = pd.read_csv('2kSample2.csv', error_bad_lines=False)
+#Loading and formatting the df
+df = pd.read_csv('CleanData.csv', error_bad_lines=False)
+df = df.drop(["Unnamed: 0"], axis=1)
+#Creating the new df
+RowsNeeded = 11*len(df.index)
+NewDF = pd.DataFrame(np.empty((RowsNeeded, 6)) * np.nan) 
+NewDF_Cols = ["Object","Category","Frame","x","y","Size"]
+NewDF.columns = NewDF_Cols
 
-def YCoordFix(df):
-    #Fixing the Y Coordinates
-    Cols = df.columns.values.tolist()
-    for i in Cols:
-        if "_y" in i:
-            df[i] = df[i].apply(lambda x: 1080-x)
-    return df
-
-df = YCoordFix(df)
-
-def Adjuster(xvals, DiffX):
-    #This function fixes the movements in the case of a moving camera by working
-    #into ref point adjuster
-    for i in range(len(xvals)):
-        try:
-            for j in range(1, len(xvals[i])):
-                x = xvals[i][j]-DiffX[j-1]
-                xvals[i].append(x)
-        except:
-            continue
-    for list in range(len(xvals)):
-        xvals[list] = (xvals[list][1+len(xvals[list])//2:])
-            
-    return xvals
-       
-def RefPointAdjuster(df):
-    #This function fixes the movements in the case of a moving camera, and it works
-    #the coordinate.
-    
-    #Get the ref. point diff
-    try:
-        Refx = df['Ref_x'].tolist()
-        Refy = df['Ref_y'].tolist()
-    except: 
-    #This exception works when there is no Ref point identified
-        Refx = [0]
-        Refy = [0]
-            
-    DiffX = []
-    DiffY= []
-    for i in range(len(Refx)):
-        try:
-            try:
-                x = Refx[i+1]-Refx[i]
-                DiffX.append(x)
-                y = Refy[i+1]-Refy[i]
-                DiffY.append(y)
-            except IndexError:
-                print("Finished Indexing")
-        except:
-            try:
-                x = Refx[i+1]-Refx[0]
-                DiffX.append(x)
-                y = Refy[i+1]-Refy[0]
-                DiffY.append(y)
-            except IndexError:
-                print("Finished Indexing")
-            
-    #Apply Ref Changes to all the points
-    Cols = df.columns.values.tolist()
-    xvals = []
-    yvals = []
-    for i in Cols:
-        if "_x" in i:
-            x = df[i].tolist()
-            xvals.append(x)
-        elif "_y" in i:
-            y = df[i].tolist()
-            yvals.append(y)
-            
-    AdjX = Adjuster(xvals, DiffX)
-    AdjY = Adjuster(yvals, DiffY)
-    n = [AdjX,AdjY]
-    return n
-    
-        
-AdjX = RefPointAdjuster(df)[0]
-AdjY = RefPointAdjuster(df)[1]
-
-
-#Now I want to put those changes back into the df
+#Creating the objects column properly
+    #First I need to get the names without the x and y
 Cols = df.columns.values.tolist()
-indexX = -1
-indexY = -1
+ObjectName = []
 for i in Cols:
     if "_x" in i:
-        indexX += 1
-        try:
-            df[str(i)]= pd.Series(AdjX[indexX])
-        except IndexError:
-            print("Indexed:",str(i))
-            continue
-    elif "_y" in i:
-        indexY += 1
-        try:
-            df[str(i)]= pd.Series(AdjY[indexY])
-        except IndexError:
-            print("Indexed:",str(i))
-            continue
+        ObjectName.append(str(i))
         
-#Now we add the frame by frame as time
-Frame = []
-Size = []
-for i in range(len(AdjX[0])):
-    Frame.append(i)
-    Size.append(15)
-try:
-    df['Frame']=pd.Series(Frame)
-    df['Size']=pd.Series(Size)
-except IndexError:
-            print("Added Frames")
-df = df.dropna(axis=0)    
+    #Now I have the names and I need to make the list properly    
+CurrentRows = 0
+RowNames = []
+while CurrentRows != RowsNeeded:
+    RowNames.append(ObjectName)
+    CurrentRows = len(RowNames*11)
+ObjectName = []
+for item in RowNames:
+    for i in item:
+        ObjectName.append(i)
+RowNames = []
+NewDF["Object"] = pd.Series(ObjectName)
 
-#Saving this cleaned data for further editing to graph
-df.to_csv("CleanData.csv")
+    #Now I need to make the category
+CurrentRows = 0
+Cats = []
+Categories = ["Team 1", "Team 2", "Ball"]
+for i in range(11):
+    if i < 5:
+        Cats.append(Categories[0])
+    elif i >= 5 and i < 10:
+        Cats.append(Categories[1])
+    else:
+        Cats.append(Categories[2])
+Categories = []
+while CurrentRows != RowsNeeded:
+    Categories.append(Cats)
+    CurrentRows = len(Categories*11)
+Cats = []
+for item in Categories:
+    for i in item:
+        Cats.append(i)
+Categories = []
+NewDF["Category"] = pd.Series(Cats)
+    #Now I will make frame
+CurrentRows = 0
+Frames = []
+for i in range(int(RowsNeeded/11)):
+    for x in range(11):
+        Frames.append(i)
+NewDF["Frame"] = pd.Series(Frames)  
+    #Now I will make size
+CurrentRows = 0
+size = []
+for i in range(RowsNeeded):    
+    size.append(25)
+NewDF["Size"] = pd.Series(size)
 
+
+#Now for the player coordinates
+def Adjuster(df, NewDF, indicator = "x"):
+    Cols = df.columns.values.tolist()
+    xdf = df
+    for i in Cols:
+        if "_y" in i and indicator == "x":
+            xdf = xdf.drop([i], axis=1)
+        elif "_x" in i and indicator == "y":
+            xdf = xdf.drop([i], axis=1)
+        elif "Frame" in i or "Size" in i:
+            xdf = xdf.drop([i], axis=1)
+    xdf = xdf.transpose()
+    Cols = xdf.columns.values.tolist()
+    values = []
+    for i in range(len(Cols)):
+        x = xdf[i].tolist()
+        values.append(x)
+    Vals_to_add = []
+    for list in values:
+        for i in list:
+           Vals_to_add.append(i) 
+    return Vals_to_add
+    
+XVALS = Adjuster(df, NewDF, indicator = "x")
+YVALS = Adjuster(df, NewDF, indicator = "y")
+
+NewDF["x"] = pd.Series(XVALS)
+NewDF["y"] = pd.Series(YVALS)
+
+#Plotting
+Plot = px.scatter(range_x=[-10,1920], range_y=[-10,1080])
+
+Plot = px.scatter(
+    x=NewDF["x"],
+    y=NewDF["y"],
+    animation_frame=NewDF["Frame"],
+    range_x=[-10,1920], range_y=[-10,1080],color = NewDF["Category"], size = NewDF["Size"])
+
+#plot(Plot)
